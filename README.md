@@ -17,7 +17,6 @@
 
 # Tlias 智能教务系统 — Spring AI 功能全景
 
-> 生成日期：2026-06-18  
 > 项目：tlias-web-management  
 > 框架：Spring Boot 4.0.6 + Spring AI 2.0.0 (GA) + JDK 17
 
