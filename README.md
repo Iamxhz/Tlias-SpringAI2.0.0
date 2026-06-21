@@ -253,14 +253,4 @@ src/main/resources/
 | VectorStore           | ⚠️ 配置注释 | VectorStoreConfig Bean 已注释，当前走自动配置 |
 | 嵌入模型              | ✅ 完成     | DashScope text-embedding-v4                   |
 
----
 
-## 七、建议下一步学习方向
-
-1. **多会话隔离** — conversationId 从固定字符串改为从 JWT Token / 请求头动态提取
-2. **@Tool 扩展** — 在现有骨架类中增加请假审批、成绩查询、排课等功能
-3. **Default System Prompt** — 启用全局 System Prompt，为所有对话注入教务助理角色
-4. **MCP Server 扩展** — 在 mcpServer 中增加更多远程工具，验证 MCP 工具发现链路
-5. **RAG 知识库扩展** — tlias-rules.txt 中增加更多规章制度，验证多文档检索效果
-6. **Embedding 切换** — 尝试切换其他 Embedding 模型对比效果
-7. **ChatMemory 策略** — 验证 20 条滑动窗口在长对话中的表现，调整 maxMessages
