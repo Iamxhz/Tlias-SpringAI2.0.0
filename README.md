@@ -1,5 +1,20 @@
 # Tlias-SpringAI2.0.0
-在Tlias人事管理系统的基础上基于SpringAI2.0.0开发的练习项目
+
+在 Tlias 人事管理系统的基础上基于 Spring AI 2.0.0 开发的智能教务练习项目。
+
+## 功能演示
+
+![功能演示](frontend-demo.png)
+
+> 截图展示了一次对话中同时触发的四项 Spring AI 核心能力：
+>
+> 1. **MCP 远程工具调用** — 大模型通过 MCP 协议自动发现并调用远程 Weather 工具，查询城市天气（`getWeatherForecast`）
+> 2. **Chat Memory 会话记忆** — 在后续对话中，大模型记住了用户此前问过的"北京天气"，无需重复提问即可结合历史上下文进行对比
+> 3. **RAG 规章制度检索** — 当用户询问"迟到早退的处罚"，系统自动从 Redis 向量知识库中检索《教务规章制度》相关条款，注入 Prompt 后生成严谨回答
+> 4. **@Tool Function Calling** — 大模型从自然语言中提取学员 ID 和扣分值，回调本地 `updateViolationScore` 工具进行违纪扣分，并返回最新累计统计
+
+---
+
 # Tlias 智能教务系统 — Spring AI 功能全景
 
 > 生成日期：2026-06-18  
