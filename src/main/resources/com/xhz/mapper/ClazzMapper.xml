@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xhz.mapper.ClazzMapper">
+    <insert id="save">
+        insert into clazz(name, room, begin_date, end_date, master_id, subject, create_time, update_time)
+        values(#{name}, #{room}, #{beginDate}, #{endDate}, #{masterId}, #{subject}, #{createTime}, #{updateTime})
+    </insert>
+    <update id="updateById">
+        update clazz set name = #{name}, room = #{room}, begin_date = #{beginDate}, end_date = #{endDate},
+        master_id = #{masterId}, subject = #{subject}, update_time = #{updateTime}
+        where id = #{id}
+    </update>
+
+
+    <delete id="deleteById">
+        delete from clazz where id = #{id}
+    </delete>
+
+    <select id="getClazzsPage" resultType="com.xhz.pojo.Clazz">
+        select c.*, e.name as masterName from clazz c left join emp e on c.master_id = e.id
+        <where>
+            <if test="name != null and name != ''">
+                and c.name like concat('%', #{name}, '%')
+            </if>
+
+
+            <if test="begin != null and end != null">
+                and c.entry_date between #{begin} and #{end}
+            </if>
+        </where>
+    </select>
+    <select id="getClazzById" resultType="com.xhz.pojo.Clazz">
+        select * from clazz where id = #{id}
+    </select>
+    <select id="getClazzs" resultType="com.xhz.pojo.Clazz">
+        select * from clazz
+    </select>
+</mapper>

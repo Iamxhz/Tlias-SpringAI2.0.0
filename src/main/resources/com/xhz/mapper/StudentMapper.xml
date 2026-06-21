@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.xhz.mapper.StudentMapper">
+    <insert id="save">
+        insert into student(name,no,gender,phone,id_card,is_college,address,degree,graduation_date,clazz_id,violation_count,violation_score,create_time,update_time)
+        values(#{name},#{no},#{gender},#{phone},#{idCard},#{isCollege},#{address},#{degree},#{graduationDate},#{clazzId},#{violationCount},#{violationScore},#{createTime},#{updateTime})
+    </insert>
+    <update id="updateById">
+        update student set name=#{name},no=#{no},gender=#{gender},phone=#{phone},id_card=#{idCard},is_college=#{isCollege},address=#{address},degree=#{degree},graduation_date=#{graduationDate},clazz_id=#{clazzId},violation_count=#{violationCount},violation_score=#{violationScore},create_time=#{createTime},update_time=#{updateTime}
+        where id=#{id}
+    </update>
+    <delete id="deleteByIds">
+        delete from student where id in
+        <foreach collection="list" item="id" separator="," open="(" close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <select id="getStuPage" resultType="com.xhz.pojo.Student">
+        select s.*,c.name as clazzName from student s left join clazz c on s.clazz_id=c.id
+    </select>
+    <select id="getStuById" resultType="com.xhz.pojo.Student">
+        select * from student where id=#{id}
+    </select>
+    <select id="countByClazzId" resultType="java.lang.Integer">
+         select count(1) from student where clazz_id=#{clazzId}
+    </select>
+    <select id="getStuByNo" resultType="com.xhz.pojo.Student">
+        select * from student where no = #{no}
+    </select>
+    <select id="getStuByName" resultType="com.xhz.pojo.Student">
+        select * from student where name like concat('%', #{name}, '%')
+    </select>
+    <update id="addViolationScore">
+        update student
+        set violation_score = violation_score + #{score},
+            violation_count = violation_count + 1,
+            update_time = now()
+        where id = #{id}
+    </update>
+</mapper>

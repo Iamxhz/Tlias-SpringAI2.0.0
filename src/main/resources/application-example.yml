@@ -1,0 +1,78 @@
+spring:
+  application:
+    name: tlias-web-management
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 100MB
+
+  # mysql连接配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/tlias
+    username: root
+    password: your-mysql-password
+
+  # 1. 配置基础的 Redis 连接
+  data:
+    redis:
+      client-type: jedis
+      host: localhost
+      port: 6379
+      # password: your_password  # 如果你以后线上的 redis 有密码就把这行打开
+
+  # ==================== Spring AI 配置（DeepSeek） ====================
+  ai:
+    openai:
+      # 【关键】将 Base URL 指向 DeepSeek 的 API 端点
+      base-url: https://api.deepseek.com
+      # API Key — 请替换为你的真实 Key，或通过环境变量 DEEPSEEK_API_KEY 注入
+      api-key: your-deepseek-api-key
+      chat:
+        # 根据最新文档，更新为最新的 DeepSeek V4 Pro 模型
+        model: deepseek-v4-pro
+      embedding:
+        enabled: true
+        base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+        api-key: your-dashscope-api-key
+        model: text-embedding-v4    # 1. 换成 v4
+        dimensions: 2048            # 2. 必须改成 2048（v4 的标准维度是 2048）
+    mcp :
+      client:
+        enabled: true
+        type: SYNC
+        # 与 mcp-server 一致；须先启动 mcp-server（默认 http://localhost:8888）
+        sse:
+          connections:
+            mcp-weather:
+              url: http://localhost:8888
+
+    vectorstore:
+      type: redis  # 激活 RedisVectorStoreAutoConfiguration
+      redis:
+        # 给你的教务知识库起个响亮的索引名
+        index: tlias-rules-index
+        # 极其重要（特别是 Spring AI 2.0+）：设为 true 代表第一次启动时自动在 Redis 里建好索引结构
+        initialize-schema: true
+        prefix: "tlias_"
+
+mybatis:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+
+# spring事务管理日志
+logging:
+  level:
+    org.springframework.jdbc.support.JdbcTransactionManager: debug
+    org.springframework.ai: debug
+
+# 阿里云自定义配置
+aliyun:
+  dashscope:
+
+  oss:
+    endpoint: https://oss-cn-beijing.aliyuncs.com
+    bucketName: xhz-java-ai
+    region: cn-beijing
