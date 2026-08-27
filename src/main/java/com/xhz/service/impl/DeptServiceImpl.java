@@ -7,6 +7,8 @@ import com.xhz.mapper.EmpMapper;
 import com.xhz.pojo.Dept;
 import com.xhz.service.DeptService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -18,16 +20,22 @@ public class DeptServiceImpl implements DeptService {
     private DeptMapper deptMapper;
     @Autowired
     private EmpMapper empMapper;
+
+    /**
+     * 查询全部部门 — 缓存 30 分钟（部门变动极少）
+     */
+    @Cacheable(value = "dept", key = "'list'")
     @Override
     public List<Dept> findAll() {
         return deptMapper.findAll();
     }
 
     /**
-     * 根据id删除部门
+     * 根据id删除部门 — 清部门缓存
      */
+    @CacheEvict(value = "dept", allEntries = true)
     @Override
-    @LogOperation //自定义注解（表示：当前方法属于目标方法）
+    @LogOperation
     public void deleteById(Integer id) {
         Integer count =empMapper.countDeptByID(id);
         if(count != null && count > 0){
@@ -36,12 +44,11 @@ public class DeptServiceImpl implements DeptService {
         deptMapper.deleteById(id);
     }
 
+    @CacheEvict(value = "dept", allEntries = true)
     @Override
     public void save(Dept dept) {
-        //补全基础属性
         dept.setCreateTime(LocalDateTime.now());
         dept.setUpdateTime(LocalDateTime.now());
-        //保存部门
         deptMapper.insert(dept);
     }
 
@@ -50,6 +57,7 @@ public class DeptServiceImpl implements DeptService {
         return deptMapper.getById(id);
     }
 
+    @CacheEvict(value = "dept", allEntries = true)
     @Override
     public void update(Dept dept) {
         dept.setUpdateTime(LocalDateTime.now());

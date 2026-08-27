@@ -1,7 +1,6 @@
-package com.xhz.initializer;
+package com.xhz.ai.initializer;
 
 import org.springframework.ai.document.Document;
-import org.springframework.ai.reader.TextReader;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
@@ -31,9 +30,6 @@ import java.util.List;
  * 3. 不存在 → 读 txt → 切块 → accept() → 写标记位
  *
  * 规则变更后如何重建？在 Redis CLI 执行 DEL tlias_rules:init，重启应用即可。
- *
- * @see SimpleVectorStore
- * @see RedisVectorStore
  */
 @Component
 public class TliasRulesInitializer implements CommandLineRunner {
@@ -81,13 +77,11 @@ public class TliasRulesInitializer implements CommandLineRunner {
         if (vectorStore instanceof RedisVectorStore redisVectorStore) {
             var jedis = redisVectorStore.getJedisClient();
 
-            // 标记位存在 → 已初始化，跳过
             if (jedis.get(REDIS_INIT_FLAG) != null) {
                 System.out.println(">> [RAG] Redis 索引标记位存在，已初始化，跳过");
                 return;
             }
 
-            // 标记位不存在 → 切块 → 向量化 → 写标记位
             System.out.println(">> [RAG] Redis 标记位不存在，开始解析教务规则文件...");
             List<Document> splitDocs = loadAndSplitRules();
             if (splitDocs == null) return;
@@ -100,7 +94,6 @@ public class TliasRulesInitializer implements CommandLineRunner {
             return;
         }
 
-        // ==================== 未知类型 ====================
         System.out.println(">> [RAG] 未知 VectorStore 类型: " + vectorStore.getClass().getName()
                 + "，跳过初始化");
     }
@@ -118,13 +111,9 @@ public class TliasRulesInitializer implements CommandLineRunner {
             return null;
         }
 
-        // 核心变化：将 TextReader 换成 TikaDocumentReader
         TikaDocumentReader tikaReader = new TikaDocumentReader(rulesResource);
-
-        // Tika 会在底层自动判断是 PDF 还是 Word，并提取出纯文本
         List<Document> documents = tikaReader.read();
 
-        // 完美衔接之前的切块逻辑
         TokenTextSplitter splitter = TokenTextSplitter.builder()
                 .withChunkSize(200)
                 .withMinChunkSizeChars(20)

@@ -7,7 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-import java.io.File;
+
 import java.util.UUID;
 
 @Slf4j
@@ -18,7 +18,7 @@ public class UploadController {
     private AliyunOSSOperator aliyunOSSOperator;
 
     @PostMapping("/upload")
-    public Result upload(MultipartFile file) throws Exception {
+    public Result<String> upload(MultipartFile file) throws Exception {
         log.info("上传文件：{}", file);
         if (!file.isEmpty()) {
             // 生成唯一文件名
@@ -29,7 +29,7 @@ public class UploadController {
             String url = aliyunOSSOperator.upload(file.getBytes(), uniqueFileName);
             return Result.success(url);
         }
-        return Result.error("上传失败");
+        return Result.fail("上传失败，文件为空");
     }
 
 }

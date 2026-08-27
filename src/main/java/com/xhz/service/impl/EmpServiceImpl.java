@@ -4,6 +4,8 @@ import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import com.xhz.mapper.EmpExprMapper;
 import com.xhz.mapper.EmpMapper;
+import com.xhz.mapper.SysRoleMapper;
+import com.xhz.mapper.SysRolePermissionMapper;
 import com.xhz.pojo.*;
 import com.xhz.pojo.param.EmpAddParam;
 import com.xhz.pojo.param.EmpExprParam;
@@ -12,6 +14,8 @@ import com.xhz.service.EmpService;
 import com.xhz.utils.JwtUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -39,8 +43,15 @@ public class EmpServiceImpl implements EmpService {
     @Autowired
     private EmpLogService empLogService;
 
+    @Autowired
+    private SysRoleMapper sysRoleMapper;
+
+    @Autowired
+    private SysRolePermissionMapper sysRolePermissionMapper;
+
     // ==================== Web 表单方法（保持原样） ====================
 
+    @Cacheable(value = "empPage", key = "#empQueryParam")
     public PageResult page(EmpQueryParam empQueryParam) {
         PageHelper.startPage(empQueryParam.getPage(), empQueryParam.getPageSize());
         List<Emp> empList = empMapper.list(empQueryParam);
@@ -48,6 +59,7 @@ public class EmpServiceImpl implements EmpService {
         return new PageResult(p.getTotal(), p.getResult());
     }
 
+    @CacheEvict(value = {"emplist", "empPage"}, allEntries = true)
     @Transactional(rollbackFor = {Exception.class})
     @Override
     public void save(Emp emp) {
@@ -73,6 +85,7 @@ public class EmpServiceImpl implements EmpService {
         return empMapper.getById(id);
     }
 
+    @CacheEvict(value = {"emplist", "empPage"}, allEntries = true)
     @Transactional
     @Override
     public void update(Emp emp) {
@@ -89,6 +102,7 @@ public class EmpServiceImpl implements EmpService {
         }
     }
 
+    @Cacheable(value = "emplist", key = "'list'")
     @Override
     public List<Emp> getEmps() {
         return empMapper.getEmps();
@@ -98,13 +112,49 @@ public class EmpServiceImpl implements EmpService {
     public LoginInfo login(Emp emp) {
         Emp empLogin = empMapper.getUsernameAndPassword(emp);
         if (empLogin != null) {
+            // 1. deptId → 角色映射（学工部=1、教研部=2 → ADMIN）
+            String roleCode = mapDeptToRole(empLogin.getDeptId());
+            List<String> permissions = Collections.emptyList();
+
+            // 2. 查 RBAC 表加载权限（表不存在时降级为空权限，不阻塞登录）
+            try {
+                SysRole role = sysRoleMapper.findByRoleCode(roleCode);
+                if (role != null) {
+                    permissions = sysRolePermissionMapper.findPermCodesByRoleId(role.getId());
+                }
+            } catch (Exception e) {
+                log.warn("加载角色权限失败（可能 RBAC 表未创建），降级为空权限：{}", e.getMessage());
+            }
+
+            // 3. 将角色+权限打入 JWT
             Map<String, Object> dataMap = new HashMap<>();
             dataMap.put("id", empLogin.getId());
             dataMap.put("username", empLogin.getUsername());
+            dataMap.put("role", roleCode);
+            dataMap.put("permissions", permissions);
             String jwt = JwtUtils.generateJwt(dataMap);
+
+            log.info("登录成功：userId={}, username={}, deptId={}, role={}, permissions={}",
+                    empLogin.getId(), empLogin.getUsername(), empLogin.getDeptId(), roleCode, permissions);
+
             return new LoginInfo(empLogin.getId(), empLogin.getUsername(), empLogin.getName(), jwt);
         }
         return null;
+    }
+
+    /**
+     * 根据 emp.deptId 映射角色标识。
+     * <pre>
+     *   1（学工部）、2（教研部）→ ADMIN（查询+写）
+     *   其他                     → USER（仅部门/班级查询）
+     * </pre>
+     */
+    private String mapDeptToRole(Integer deptId) {
+        if (deptId == null) return "USER";
+        return switch (deptId) {
+            case 1, 2 -> "ADMIN";
+            default   -> "USER";
+        };
     }
 
     // ==================== AI Tool Calling 专用方法 ====================
@@ -148,6 +198,7 @@ public class EmpServiceImpl implements EmpService {
      * 核心业务：批量删除员工及关联工作经历
      * （供 Controller 和 AI Tool 层复用）
      */
+    @CacheEvict(value = {"emplist", "empPage"}, allEntries = true)
     @Transactional(rollbackFor = Exception.class)
     @Override
     public int deleteEmpByIds(List<Integer> ids) {

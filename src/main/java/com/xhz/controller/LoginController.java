@@ -4,6 +4,7 @@ import com.xhz.pojo.Emp;
 import com.xhz.pojo.LoginInfo;
 import com.xhz.pojo.Result;
 import com.xhz.service.EmpService;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,13 +19,13 @@ public class LoginController {
     private EmpService empService;
 
     @PostMapping("/login")
-    public Result login(@RequestBody Emp emp){
+    public Result<LoginInfo> login(@Valid @RequestBody Emp emp){
         log.info("员工来登录啦 , {}", emp);
         LoginInfo loginInfo = empService.login(emp);
         if(loginInfo != null){
             return Result.success(loginInfo);
         }
-        return Result.error("用户名或密码错误~");
+        return Result.fail("用户名或密码错误~");
     }
 
 }

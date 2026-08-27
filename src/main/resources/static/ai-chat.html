@@ -130,17 +130,44 @@
                     <i class="fa-solid fa-robot text-white text-lg"></i>
                 </div>
                 <div>
-                    <h1 class="text-lg font-bold text-gray-800 leading-tight">AI 智能助手</h1>
-                    <p class="text-xs text-gray-400">Spring AI · 流式对话</p>
+                    <h1 class="text-lg font-bold text-gray-800 leading-tight">班主任 Agent</h1>
+                    <p class="text-xs text-gray-400">工具时间线 · TOOL_START / TOOL_RESULT</p>
                 </div>
             </div>
             <div class="flex items-center gap-2">
+                <button
+                    id="newSessionBtn"
+                    class="px-3 py-1.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium hover:bg-gray-200 transition"
+                    title="开启新会话（清空本页记忆隔离 ID）"
+                >
+                    新会话
+                </button>
+                <span id="sessionBadge" class="hidden sm:inline-flex px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 text-xs font-mono max-w-[140px] truncate" title="conversationId"></span>
                 <span id="statusIndicator" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 text-green-600 text-xs font-medium">
                     <span class="w-2 h-2 rounded-full bg-green-500"></span>
                     在线
                 </span>
             </div>
         </header>
+
+        <section class="shrink-0 px-6 py-3 bg-slate-50 border-b border-gray-100">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                    id="tokenInput"
+                    type="text"
+                    placeholder="先粘贴登录 token，再调用 /ai/chat"
+                    class="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none input-glow"
+                />
+                <button
+                    id="saveTokenBtn"
+                    type="button"
+                    class="rounded-xl bg-slate-800 px-4 py-2 text-sm text-white hover:bg-slate-900 transition"
+                >
+                    保存 Token
+                </button>
+            </div>
+            <p class="mt-2 text-xs text-slate-500">AI 接口已接入 JWT。请先登录拿到 token，再保存到本页用于聊天和审批请求。</p>
+        </section>
 
         <!-- ========== 聊天消息区 ========== -->
         <main id="chatContainer" class="flex-1 overflow-y-auto chat-scroll px-4 py-6 space-y-6 bg-gray-50">
@@ -154,12 +181,21 @@
             <div class="max-w-2xl mx-auto space-y-2">
                 <!-- 消息输入行 -->
                 <div class="flex items-end gap-3">
+                <input id="evidenceInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
+                <button
+                    id="attachBtn"
+                    type="button"
+                    class="shrink-0 w-11 h-11 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200 active:scale-95 transition-all"
+                    title="上传违纪证据图"
+                >
+                    <i class="fa-solid fa-image"></i>
+                </button>
                 <!-- 输入框 -->
                 <div class="flex-1 relative">
                     <textarea
                         id="messageInput"
                         rows="1"
-                        placeholder="输入消息，Enter 发送，Shift+Enter 换行..."
+                        placeholder="输入消息或附上违纪证据图，Enter 发送..."
                         class="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 pr-12 text-sm text-gray-800 placeholder-gray-400 outline-none transition-all input-glow"
                         style="max-height: 150px;"
                     ></textarea>
@@ -182,10 +218,17 @@
                     <i id="loadingIcon" class="fa-solid fa-circle-notch fa-spin hidden"></i>
                 </button>
             </div>
+                <div id="evidencePreview" class="hidden items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <img id="evidenceThumb" alt="证据预览" class="h-12 w-12 rounded-lg object-cover" />
+                    <div class="flex-1 min-w-0">
+                        <div class="text-xs font-medium text-slate-700">违纪证据图</div>
+                        <div id="evidenceName" class="text-xs text-slate-400 truncate"></div>
+                    </div>
+                    <button id="removeEvidenceBtn" type="button" class="text-xs text-slate-500 hover:text-red-500">移除</button>
                 </div>
-            </div>
+                </div>
             <p class="text-center text-xs text-gray-400 mt-2">
-                接口 POST /ai/chat · 响应 Streaming · @Tool 自动提取业务参数
+                POST /ai/chat · 证据图视觉识别 · HITL 确认
             </p>
         </footer>
     </div>
@@ -201,10 +244,164 @@
             const loadingIcon = document.getElementById('loadingIcon');
             const clearBtn = document.getElementById('clearBtn');
             const statusIndicator = document.getElementById('statusIndicator');
+            const newSessionBtn = document.getElementById('newSessionBtn');
+            const sessionBadge = document.getElementById('sessionBadge');
+            const tokenInput = document.getElementById('tokenInput');
+            const saveTokenBtn = document.getElementById('saveTokenBtn');
+            const evidenceInput = document.getElementById('evidenceInput');
+            const attachBtn = document.getElementById('attachBtn');
+            const evidencePreview = document.getElementById('evidencePreview');
+            const evidenceThumb = document.getElementById('evidenceThumb');
+            const evidenceName = document.getElementById('evidenceName');
+            const removeEvidenceBtn = document.getElementById('removeEvidenceBtn');
+
+            const CONVERSATION_KEY = 'tlias_teacher_conversation_id';
+            const TOKEN_KEY = 'tlias_teacher_token';
 
             // ========== 状态管理 ==========
             let isStreaming = false;
-            let currentAiBubble = null; // 当前正在流式写入的 AI 气泡
+            let currentAiBubble = null;
+            let conversationId = localStorage.getItem(CONVERSATION_KEY) || '';
+            let accessToken = localStorage.getItem(TOKEN_KEY) || '';
+            let pendingFollowUp = null; // 确认扣分后，等当前流结束再自动追问 Agent
+            let pendingEvidence = null; // { file, previewUrl }
+
+            function ensureConversationId() {
+                if (!conversationId) {
+                    conversationId = 'teacher-' + Math.random().toString(16).slice(2, 14);
+                    localStorage.setItem(CONVERSATION_KEY, conversationId);
+                }
+                sessionBadge.textContent = conversationId;
+                sessionBadge.title = 'conversationId: ' + conversationId;
+                return conversationId;
+            }
+
+            function resetConversation() {
+                conversationId = 'teacher-' + Math.random().toString(16).slice(2, 14);
+                localStorage.setItem(CONVERSATION_KEY, conversationId);
+                sessionBadge.textContent = conversationId;
+                sessionBadge.title = 'conversationId: ' + conversationId;
+                chatContainer.innerHTML = '';
+                addWelcomeMessage();
+            }
+
+            function saveToken() {
+                accessToken = tokenInput.value.trim();
+                if (!accessToken) {
+                    localStorage.removeItem(TOKEN_KEY);
+                    return false;
+                }
+                localStorage.setItem(TOKEN_KEY, accessToken);
+                return true;
+            }
+
+            function looksLikeJwt(value) {
+                return typeof value === 'string' && /^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+$/.test(value);
+            }
+
+            function guessExistingJwt() {
+                try {
+                    const queryToken = new URLSearchParams(window.location.search).get('token');
+                    if (looksLikeJwt(queryToken)) {
+                        return queryToken;
+                    }
+
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        const value = key ? localStorage.getItem(key) : null;
+                        if (looksLikeJwt(value)) {
+                            return value;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('自动探测 token 失败:', e);
+                }
+                return '';
+            }
+
+            function getToken() {
+                const token = (tokenInput.value || '').trim() || accessToken;
+                if (!token) {
+                    throw new Error('请先登录系统并在页面顶部保存 token。');
+                }
+                return token;
+            }
+
+            function getAuthHeaders() {
+                return {
+                    'Content-Type': 'application/json',
+                    'token': getToken()
+                };
+            }
+
+            function setEvidenceFile(file) {
+                if (pendingEvidence && pendingEvidence.previewUrl) {
+                    URL.revokeObjectURL(pendingEvidence.previewUrl);
+                }
+                if (!file) {
+                    pendingEvidence = null;
+                    evidenceInput.value = '';
+                    evidencePreview.classList.add('hidden');
+                    evidencePreview.classList.remove('flex');
+                    return;
+                }
+                const previewUrl = URL.createObjectURL(file);
+                pendingEvidence = { file, previewUrl };
+                evidenceThumb.src = previewUrl;
+                evidenceName.textContent = file.name + ' · ' + Math.max(1, Math.round(file.size / 1024)) + ' KB';
+                evidencePreview.classList.remove('hidden');
+                evidencePreview.classList.add('flex');
+            }
+
+            function hideEvidencePreview() {
+                pendingEvidence = null;
+                evidenceInput.value = '';
+                evidencePreview.classList.add('hidden');
+                evidencePreview.classList.remove('flex');
+            }
+
+            function fileToDataUrl(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = () => reject(new Error('读取证据图失败'));
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            async function parseJsonResponse(response, fallbackMsg) {
+                const raw = await response.text();
+                if (!raw) {
+                    throw new Error(fallbackMsg + '（空响应 HTTP ' + response.status + '）');
+                }
+                const trimmed = raw.trim();
+                if (trimmed.startsWith('<')) {
+                    throw new Error(fallbackMsg + '：接口返回了网页而不是 JSON，请确认请求打到 tlias 后端（/ai/**）。');
+                }
+                try {
+                    return JSON.parse(trimmed);
+                } catch (e) {
+                    throw new Error(fallbackMsg + '：无法解析响应。');
+                }
+            }
+
+            async function uploadEvidence(file) {
+                const form = new FormData();
+                form.append('file', file);
+                const response = await fetch('/ai/upload', {
+                    method: 'POST',
+                    headers: { token: getToken() },
+                    body: form
+                });
+                if (response.status === 401) {
+                    throw new Error('未登录或 token 已失效，请重新登录并更新页面顶部 token。');
+                }
+                const body = await parseJsonResponse(response, '证据图上传失败');
+                if (!response.ok || body.code === 0 || !body.data) {
+                    throw new Error(body.msg || ('上传失败 HTTP ' + response.status));
+                }
+                return body.data;
+            }
 
             // ========== 工具函数 ==========
             function scrollToBottom(smooth = true) {
@@ -285,8 +482,11 @@
             }
 
             // ========== 添加用户消息 ==========
-            function addUserMessage(text) {
-                const { wrapper } = createBubble('user', escapeHtml(text));
+            function addUserMessage(text, imageUrl) {
+                const html = (imageUrl
+                    ? '<img src="' + escapeHtml(imageUrl) + '" alt="证据图" class="mb-2 max-h-40 rounded-lg object-cover">'
+                    : '') + escapeHtml(text || '请根据证据图按规章扣分');
+                const { wrapper } = createBubble('user', html);
                 chatContainer.appendChild(wrapper);
                 scrollToBottom();
             }
@@ -295,10 +495,50 @@
             function addWelcomeMessage() {
                 const { wrapper, bubble } = createBubble('assistant');
                 bubble.innerHTML = simpleMarkdownToHtml(
-                    '你好！我是你的 **智能助手**，本地前端界面已就绪。\n\n请确保后端 Spring AI 接口 `/ai/chat` 已正确启动，然后就可以开始对话了 🎉'
+                    '你好！我是 **班主任 Agent**。\n\n' +
+                    '使用前请先在顶部粘贴登录 `token`。\n\n' +
+                    '可以打字，也可以点左侧图片按钮上传**违纪证据图**。\n\n' +
+                    '查询示例：「有哪些员工」「Java 班有哪些学员」「各班人数」。写操作仍会弹出确认卡。'
                 );
                 chatContainer.appendChild(wrapper);
                 scrollToBottom(false);
+            }
+
+            /** 在消息流上方展示一次运行的生命周期提示 */
+            function addRunMeta(text) {
+                const el = document.createElement('div');
+                el.className = 'text-center text-xs text-slate-400 font-mono message-enter';
+                el.textContent = text;
+                chatContainer.appendChild(el);
+                scrollToBottom();
+                return el;
+            }
+
+            /** 工具调用时间线（TOOL_START / TOOL_RESULT） */
+            function showVisionResult(event) {
+                const el = document.createElement('div');
+                el.className = 'mx-auto max-w-lg message-enter rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-900';
+                el.innerHTML = '<div class="font-semibold mb-1"><i class="fa-solid fa-eye mr-1"></i>视觉识别</div>' +
+                    '<div class="font-mono whitespace-pre-wrap break-words">' + escapeHtml(event.content || '') + '</div>';
+                chatContainer.appendChild(el);
+                scrollToBottom();
+            }
+
+            function showToolTimeline(event) {
+                const el = document.createElement('div');
+                const isStart = event.type === 'TOOL_START';
+                el.className = 'mx-auto max-w-lg message-enter rounded-lg border px-3 py-2 text-xs font-mono ' +
+                    (isStart
+                        ? 'border-sky-200 bg-sky-50 text-sky-800'
+                        : 'border-violet-200 bg-violet-50 text-violet-800');
+                const icon = isStart ? '🔧' : '📤';
+                const label = isStart ? 'TOOL_START' : 'TOOL_RESULT';
+                const name = event.toolName || 'unknown';
+                const detail = event.content ? (' · ' + event.content) : '';
+                el.textContent = icon + ' ' + label + ' · ' + name + detail;
+                chatContainer.appendChild(el);
+                scrollToBottom();
+                return el;
             }
 
             // ========== 创建 AI 气泡（流式写入目标） ==========
@@ -320,6 +560,7 @@
                 isStreaming = isLoading;
                 if (isLoading) {
                     sendBtn.disabled = true;
+                    if (attachBtn) attachBtn.disabled = true;
                     sendIcon.classList.add('hidden');
                     loadingIcon.classList.remove('hidden');
                     messageInput.disabled = true;
@@ -331,6 +572,7 @@
                     `;
                 } else {
                     sendBtn.disabled = false;
+                    if (attachBtn) attachBtn.disabled = false;
                     sendIcon.classList.remove('hidden');
                     loadingIcon.classList.add('hidden');
                     messageInput.disabled = false;
@@ -353,117 +595,281 @@
             }
 
             // ========== 构建请求载荷（业务上下文由 @Tool 自动提取） ==========
-            function buildPayload(text) {
-                return { message: text };
+            function buildPayload(text, imageUrl, imageBase64) {
+                const payload = {
+                    message: text,
+                    conversationId: ensureConversationId()
+                };
+                if (imageUrl) {
+                    payload.imageUrl = imageUrl;
+                }
+                if (imageBase64) {
+                    payload.imageBase64 = imageBase64;
+                }
+                return payload;
+            }
+
+            /** 尝试把 SSE data 解析为 AgentEvent；失败则当作旧版纯文本 */
+            function parseAgentEvent(raw) {
+                try {
+                    const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                    if (obj && obj.type && obj.runId) {
+                        return obj;
+                    }
+                } catch (e) {
+                    // ignore
+                }
+                return null;
+            }
+
+            function getApprovalUiMeta(event) {
+                const tool = event.toolName || '';
+                const idText = escapeHtml(event.approvalId || '');
+                const table = {
+                    deleteEmpByIds: { confirmText: '确认删除', rejectText: '取消删除', approvedFollowUpPrefix: '班主任已确认删除员工。', detailText: idText },
+                    saveEmp: { confirmText: '确认入职', rejectText: '取消入职', approvedFollowUpPrefix: '班主任已确认员工入职。', detailText: idText },
+                    saveDept: { confirmText: '确认新增部门', rejectText: '取消', approvedFollowUpPrefix: '班主任已确认新增部门。', detailText: idText },
+                    updateDept: { confirmText: '确认修改部门', rejectText: '取消', approvedFollowUpPrefix: '班主任已确认修改部门。', detailText: idText },
+                    deleteDept: { confirmText: '确认删除部门', rejectText: '取消', approvedFollowUpPrefix: '班主任已确认删除部门。', detailText: idText },
+                    setAlarm: { confirmText: '确认设置闹钟', rejectText: '取消', approvedFollowUpPrefix: '班主任已确认设置闹钟。', detailText: idText }
+                };
+                if (table[tool]) {
+                    return table[tool];
+                }
+                return {
+                    confirmText: '确认扣分',
+                    rejectText: '取消',
+                    approvedFollowUpPrefix: '班主任已确认扣分。',
+                    detailText: `studentId=${escapeHtml(String(event.studentId ?? ''))} · score=${escapeHtml(String(event.score ?? ''))} · ${idText}`
+                };
+            }
+
+            /** 渲染通用审批确认卡 */
+            function showApprovalCard(event) {
+                const uiMeta = getApprovalUiMeta(event);
+                const card = document.createElement('div');
+                card.className = 'mx-auto max-w-md message-enter rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm';
+                card.dataset.approvalId = event.approvalId;
+                card.dataset.toolName = event.toolName || '';
+
+                card.innerHTML = `
+                    <div class="text-sm font-semibold text-amber-800 mb-1">
+                        <i class="fa-solid fa-shield-halved mr-1"></i>需要班主任确认
+                    </div>
+                    <div class="text-sm text-amber-900 mb-3">
+                        ${escapeHtml(event.content || '')}<br>
+                        <span class="text-xs text-amber-700 font-mono">
+                            ${uiMeta.detailText}
+                        </span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button type="button" class="approve-btn flex-1 rounded-lg bg-amber-600 text-white text-sm py-2 hover:bg-amber-700">
+                            ${uiMeta.confirmText}
+                        </button>
+                        <button type="button" class="reject-btn flex-1 rounded-lg bg-white border border-amber-300 text-amber-800 text-sm py-2 hover:bg-amber-100">
+                            ${uiMeta.rejectText}
+                        </button>
+                    </div>
+                `;
+
+                const approveBtn = card.querySelector('.approve-btn');
+                const rejectBtn = card.querySelector('.reject-btn');
+
+                approveBtn.addEventListener('click', () => submitApproval(card, event.approvalId, true));
+                rejectBtn.addEventListener('click', () => submitApproval(card, event.approvalId, false));
+
+                chatContainer.appendChild(card);
+                scrollToBottom();
+            }
+
+            async function submitApproval(card, approvalId, approved) {
+                const buttons = card.querySelectorAll('button');
+                buttons.forEach(b => { b.disabled = true; });
+                const toolName = card.dataset.toolName || '';
+                const uiMeta = getApprovalUiMeta({ toolName, approvalId });
+
+                try {
+                    const response = await fetch('/ai/approve', {
+                        method: 'POST',
+                        headers: getAuthHeaders(),
+                        body: JSON.stringify({ approvalId, approved })
+                    });
+                    if (response.status === 401) {
+                        throw new Error('未登录或 token 已失效，请重新登录并更新页面顶部 token。');
+                    }
+                    const body = await response.json();
+                    if (!response.ok || body.code === 0) {
+                        throw new Error(body.msg || ('HTTP ' + response.status));
+                    }
+
+                    const message = (body.data && body.data.message) || (approved ? '已确认' : '已取消');
+                    card.className = 'mx-auto max-w-md message-enter rounded-xl border px-4 py-3 text-sm ' +
+                        (approved ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-50 text-slate-600');
+                    card.innerHTML = (approved ? '✓ ' : '× ') + escapeHtml(message);
+
+                    // 确认成功后，等当前 SSE 结束后再让 Agent 一句话收尾
+                    if (approved) {
+                        pendingFollowUp = uiMeta.approvedFollowUpPrefix + '执行结果：' + message + '。请用一句话向我确认。';
+                        if (!isStreaming) {
+                            const text = pendingFollowUp;
+                            pendingFollowUp = null;
+                            messageInput.value = text;
+                            sendMessage();
+                        }
+                    }
+                } catch (e) {
+                    buttons.forEach(b => { b.disabled = false; });
+                    card.insertAdjacentHTML('beforeend',
+                        `<div class="text-xs text-red-500 mt-2">处理失败：${escapeHtml(e.message)}</div>`);
+                }
             }
 
             // ========== 核心：流式请求 ==========
             async function sendMessage() {
                 const text = messageInput.value.trim();
-                if (!text || isStreaming) return;
+                const evidence = pendingEvidence;
+                if ((!text && !evidence) || isStreaming) return;
 
-                // 1. 添加用户消息
-                addUserMessage(text);
+                const previewUrl = evidence ? evidence.previewUrl : '';
+                addUserMessage(text, previewUrl);
 
-                // 2. 清空输入框
                 messageInput.value = '';
                 autoResizeTextarea();
                 clearBtn.classList.add('hidden');
+                hideEvidencePreview();
 
-                // 3. 创建 AI 气泡 & 显示思考动画
-                const { bubble } = createAiStreamBubble();
+                const { wrapper, bubble } = createAiStreamBubble();
                 showThinkingDots(bubble);
                 currentAiBubble = bubble;
                 scrollToBottom();
-
-                // 4. 进入 loading 状态
                 setLoading(true);
 
-                // 5. 用于累积 Markdown 内容
                 let accumulatedText = '';
+                let runMetaEl = null;
+                let firstDelta = true;
 
                 try {
+                    let imageUrl = '';
+                    let imageBase64 = '';
+                    if (evidence && evidence.file) {
+                        if (evidence.file.size > 5 * 1024 * 1024) {
+                            throw new Error('证据图不能超过 5MB。');
+                        }
+                        imageBase64 = await fileToDataUrl(evidence.file);
+                        try {
+                            imageUrl = await uploadEvidence(evidence.file);
+                        } catch (uploadError) {
+                            console.warn('OSS 上传失败，仍用本地图做视觉识别:', uploadError);
+                        }
+                    }
+
                     const response = await fetch('/ai/chat', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(buildPayload(text)),
+                        headers: getAuthHeaders(),
+                        body: JSON.stringify(buildPayload(text, imageUrl, imageBase64)),
                     });
 
                     if (!response.ok) {
+                        if (response.status === 401) {
+                            throw new Error('未登录或 token 已失效，请重新登录并更新页面顶部 token。');
+                        }
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
 
-                    // 获取 ReadableStream
                     const reader = response.body.getReader();
                     const decoder = new TextDecoder('utf-8');
-
-                    // 初次收到数据时清除思考动画
-                    let firstChunk = true;
-                    // SSE 行缓冲区：处理跨 chunk 被截断的行
                     let lineBuffer = '';
 
                     while (true) {
                         const { value, done } = await reader.read();
                         if (done) break;
 
-                        // 1. 解码当前 chunk
-                        const text = decoder.decode(value, { stream: true });
-
-                        // 2. 将缓冲区残余 + 新文本拼接，按 \n 拆行
-                        const lines = (lineBuffer + text).split('\n');
-                        // 最后一行可能不完整（被 chunk 边界截断），留到下次拼接
+                        const chunkText = decoder.decode(value, { stream: true });
+                        const lines = (lineBuffer + chunkText).split('\n');
                         lineBuffer = lines.pop();
 
-                        // 3. 逐行解析 SSE 报文
                         for (const line of lines) {
-                            // 只处理以 "data:" 开头的行
                             if (!line.startsWith('data:')) continue;
 
-                            // 截取 "data:" 之后的实际内容，并去除首尾空白
                             let content = line.slice(5).trim();
+                            if (content === '' || content === '[DONE]' || content === '"[DONE]"') continue;
 
-                            // 4. 过滤干扰项
-                            if (content === '') continue;           // 空数据行
-                            if (content === '[DONE]') continue;     // OpenAI 规范结束符
-                            if (content === '"[DONE]"') continue;   // 防止后端多套一层引号
-
-                            // ==========================================
-                            // 5. 核心修复：处理 Spring 框架附带的 JSON 双引号和转义符
-                            // ==========================================
-                            // 如果内容被双引号包裹，尝试用 JSON.parse 把它还原成真正的文本
                             if (content.startsWith('"') && content.endsWith('"')) {
                                 try {
-                                    // 这一步非常神奇，JSON.parse("\"你好\\n世界\"") 会自动去掉外层引号，并把 \\n 变成真正的换行
                                     content = JSON.parse(content);
                                 } catch (e) {
-                                    // 如果解析失败，就采用粗暴的截取法
                                     content = content.substring(1, content.length - 1);
                                 }
                             }
 
-                            // 6. 累积纯文本
-                            if (firstChunk) {
-                                firstChunk = false;
-                                // 清除思考点的同时写入首个字符
+                            const event = parseAgentEvent(content);
+                            if (event) {
+                                if (event.conversationId && event.conversationId !== conversationId) {
+                                    conversationId = event.conversationId;
+                                    localStorage.setItem(CONVERSATION_KEY, conversationId);
+                                    sessionBadge.textContent = conversationId;
+                                }
+
+                                if (event.type === 'RUN_STARTED') {
+                                    runMetaEl = document.createElement('div');
+                                    runMetaEl.className = 'text-center text-xs text-slate-400 font-mono message-enter';
+                                    runMetaEl.textContent = '▶ ' + event.runId + ' · ' + event.conversationId;
+                                    chatContainer.insertBefore(runMetaEl, wrapper);
+                                    scrollToBottom();
+                                    continue;
+                                }
+                                if (event.type === 'RUN_FINISHED') {
+                                    if (runMetaEl) {
+                                        runMetaEl.textContent = '✓ ' + event.runId + ' 完成';
+                                    }
+                                    continue;
+                                }
+                                if (event.type === 'ERROR') {
+                                    accumulatedText = event.content || '未知错误';
+                                    firstDelta = false;
+                                    continue;
+                                }
+                                if (event.type === 'APPROVAL_REQUIRED') {
+                                    showApprovalCard(event);
+                                    continue;
+                                }
+                                if (event.type === 'VISION_RESULT') {
+                                    showVisionResult(event);
+                                    continue;
+                                }
+                                if (event.type === 'TOOL_START' || event.type === 'TOOL_RESULT') {
+                                    showToolTimeline(event);
+                                    continue;
+                                }
+                                if (event.type === 'DELTA') {
+                                    const piece = event.content || '';
+                                    if (firstDelta) {
+                                        firstDelta = false;
+                                        accumulatedText = piece;
+                                    } else {
+                                        accumulatedText += piece;
+                                    }
+                                    continue;
+                                }
+                            }
+
+                            if (firstDelta) {
+                                firstDelta = false;
                                 accumulatedText = content;
                             } else {
                                 accumulatedText += content;
                             }
                         }
 
-                        // 6. 渲染到 DOM（打字机效果）
-                        if (!firstChunk) {
+                        if (!firstDelta) {
                             bubble.innerHTML = simpleMarkdownToHtml(accumulatedText);
                             bubble.classList.add('typing-cursor');
                             scrollToBottom();
                         }
                     }
 
-                    // 流结束：移除光标，显示最终内容
                     finishAiBubble(bubble);
-                    bubble.innerHTML = simpleMarkdownToHtml(accumulatedText);
+                    bubble.innerHTML = simpleMarkdownToHtml(accumulatedText || '（无文本输出）');
 
                 } catch (error) {
                     console.error('流式请求失败:', error);
@@ -480,6 +886,12 @@
                 } finally {
                     setLoading(false);
                     currentAiBubble = null;
+                    if (pendingFollowUp) {
+                        const text = pendingFollowUp;
+                        pendingFollowUp = null;
+                        messageInput.value = text;
+                        setTimeout(() => sendMessage(), 50);
+                    }
                 }
             }
 
@@ -514,12 +926,47 @@
                 }
             });
 
+            attachBtn.addEventListener('click', () => evidenceInput.click());
+            evidenceInput.addEventListener('change', () => {
+                const file = evidenceInput.files && evidenceInput.files[0];
+                if (!file) return;
+                if (!file.type.startsWith('image/')) {
+                    setEvidenceFile(null);
+                    alert('请选择图片文件。');
+                    return;
+                }
+                setEvidenceFile(file);
+            });
+            removeEvidenceBtn.addEventListener('click', () => setEvidenceFile(null));
+
             // 发送 & 清空按钮监听（替代 HTML 行内 onclick，避免闭包作用域问题）
             sendBtn.addEventListener('click', sendMessage);
             clearBtn.addEventListener('click', clearInput);
+            newSessionBtn.addEventListener('click', () => {
+                if (isStreaming) return;
+                resetConversation();
+            });
+            saveTokenBtn.addEventListener('click', () => {
+                if (saveToken()) {
+                    statusIndicator.innerHTML = `
+                        <span class="flex items-center gap-1.5 text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full text-xs font-medium">
+                            <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                            Token 已保存
+                        </span>
+                    `;
+                }
+            });
 
             // ========== 初始化 ==========
             function init() {
+                ensureConversationId();
+                if (!accessToken) {
+                    accessToken = guessExistingJwt();
+                    if (accessToken) {
+                        localStorage.setItem(TOKEN_KEY, accessToken);
+                    }
+                }
+                tokenInput.value = accessToken;
                 addWelcomeMessage();
                 messageInput.focus();
             }

@@ -3,10 +3,12 @@ package com.xhz.pojo;
 
 import lombok.Data;
 import org.springframework.format.annotation.DateTimeFormat;
+import java.io.Serializable;
 import java.time.LocalDate;
 
 @Data
-public class EmpQueryParam {
+public class EmpQueryParam implements Serializable {
+    private static final long serialVersionUID = 1L;
 
     private Integer page = 1; //页码
     private Integer pageSize = 10; //每页展示记录数

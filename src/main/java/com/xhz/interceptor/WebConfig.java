@@ -18,8 +18,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .addPathPatterns("/**")
                 .excludePathPatterns(
                         "/login",           // 登录接口
-                        "/ai-chat.html",    // AI 测试页面
-                        "/ai/**"            // AI 相关接口
+                        "/ai-chat.html"     // AI 测试页面
                 );
     }
 }

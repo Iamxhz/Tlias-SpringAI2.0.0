@@ -1,4 +1,4 @@
-package com.xhz.aiconfig;
+package com.xhz.ai.config;
 
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;

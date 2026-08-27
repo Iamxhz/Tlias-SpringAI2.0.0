@@ -20,6 +20,17 @@
 
     <select id="getStuPage" resultType="com.xhz.pojo.Student">
         select s.*,c.name as clazzName from student s left join clazz c on s.clazz_id=c.id
+        <where>
+            <if test="name != null and name != ''">
+                and s.name like concat('%', #{name}, '%')
+            </if>
+            <if test="degree != null">
+                and s.degree = #{degree}
+            </if>
+            <if test="clazzId != null">
+                and s.clazz_id = #{clazzId}
+            </if>
+        </where>
     </select>
     <select id="getStuById" resultType="com.xhz.pojo.Student">
         select * from student where id=#{id}

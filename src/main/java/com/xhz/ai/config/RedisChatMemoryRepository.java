@@ -1,4 +1,4 @@
-package com.xhz.aiconfig;
+package com.xhz.ai.config;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;

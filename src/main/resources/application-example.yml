@@ -62,6 +62,12 @@ mybatis:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
     map-underscore-to-camel-case: true
 
+# ==================== JWT 配置（Phase 2 RBAC） ====================
+jwt:
+  secret: your-jwt-secret-key     # HS256 签名密钥（Base64 编码）
+  access-expiration: 43200000     # Access Token 有效期：12 小时（毫秒）
+  refresh-expiration: 604800000   # Refresh Token 有效期：7 天（毫秒）
+
 # spring事务管理日志
 logging:
   level:
@@ -76,3 +82,12 @@ aliyun:
     endpoint: https://oss-cn-beijing.aliyuncs.com
     bucketName: xhz-java-ai
     region: cn-beijing
+
+# 违纪证据图：主 Chat 模型（DeepSeek）是文本模型，看图走 DashScope 视觉接口
+# api-key 留空则自动使用 spring.ai.openai.embedding.api-key
+tlias:
+  vision:
+    enabled: true
+    base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api-key:
+    model: qwen-vl-plus

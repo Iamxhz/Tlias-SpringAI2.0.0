@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class SessionController {
 
     @GetMapping("/s1")
-    public Result session1(HttpSession session){
+    public Result<Void> session1(HttpSession session){
         log.info("HttpSession-s1: {}", session.hashCode());
 
         session.setAttribute("loginUser", "tom"); //往session中存储数据
@@ -20,7 +20,7 @@ public class SessionController {
     }
 
     @GetMapping("/s2")
-    public Result session2(HttpServletRequest request){
+    public Result<Object> session2(HttpServletRequest request){
         HttpSession session = request.getSession();
         log.info("HttpSession-s2: {}", session.hashCode());
 
